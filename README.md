@@ -8,7 +8,7 @@ Preview pasted images in PI Agent before sending them, with inline thumbnails an
 
 ## Demo
 
-[![Watch the pi-clipboard promotional demo](media/pi-clipboard-demo/poster.png)](https://github.com/prjct-app/pi-clipboard/raw/refs/heads/main/media/pi-clipboard-demo/pi-clipboard-demo.mp4)
+[![Watch the pi-clipboard promotional demo](https://raw.githubusercontent.com/prjct-app/pi-clipboard/main/media/pi-clipboard-demo/poster.png)](https://github.com/prjct-app/pi-clipboard/raw/refs/heads/main/media/pi-clipboard-demo/pi-clipboard-demo.mp4)
 
 [Watch or download the 40-second demo](https://github.com/prjct-app/pi-clipboard/raw/refs/heads/main/media/pi-clipboard-demo/pi-clipboard-demo.mp4). It shows the native PI Agent workflow for pasting, previewing, and reviewing one or several images before sending. The film uses the package's monochrome cover identity and an original instrumental soundtrack with no voice-over or external samples.
 

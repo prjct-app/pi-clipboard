@@ -1,28 +1,23 @@
 import { constants } from "node:fs";
-import { lstat, open } from "node:fs/promises";
+import { lstat, open, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, resolve } from "node:path";
 
 import {
   convertToPng,
-  resizeImage,
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
+  Container,
   getCapabilities,
   getImageDimensions,
-  imageFallback,
   Image,
-  truncateToWidth,
-  visibleWidth,
+  imageFallback,
+  Text,
   type Component,
   type ImageDimensions,
-  type TUI,
 } from "@earendil-works/pi-tui";
-
-import { decodePng, encodePng, type RgbaImage } from "./png.ts";
-import { blit, createImage, fillRoundedRect, fitWithin, strokeRoundedRect, type Rgba } from "./raster.ts";
 
 const CLIPBOARD_IMAGE_NAME_SOURCE = "pi-clipboard-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(?:png|jpe?g|webp|gif)";
 const CLIPBOARD_IMAGE_FILENAME = new RegExp(CLIPBOARD_IMAGE_NAME_SOURCE, "gi");
@@ -38,39 +33,16 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 const WIDGET_KEY = "pi-image-preview";
 const DEFAULT_POLL_INTERVAL_MS = 150;
 const MAX_PREVIEW_FILE_BYTES = 50 * 1024 * 1024;
-const CARD_WIDTH_CELLS = 14;
-const FALLBACK_CARD_WIDTH_CELLS = 28;
-const CARD_GAP_CELLS = 1;
-const MAX_CARDS_PER_ROW = 6;
-const CARD_WIDTH_PX = 160;
-const CARD_HEIGHT_PX = 112;
-const CARD_GAP_PX = 8;
-const THUMBNAIL_INSET_PX = 8;
-const THUMBNAIL_WIDTH_PX = CARD_WIDTH_PX - THUMBNAIL_INSET_PX * 2;
-const THUMBNAIL_HEIGHT_PX = CARD_HEIGHT_PX - THUMBNAIL_INSET_PX * 2;
-const CARD_RADIUS_PX = 16;
-const CARD_BORDER_PX = 2;
-const THUMBNAIL_RADIUS_PX = 12;
-const CARD_FILL: Rgba = [0x11, 0x18, 0x27, Math.round(0.92 * 255)];
-const CARD_BORDER: Rgba = [0x9c, 0xa3, 0xaf, 255];
+const PREVIEW_MAX_WIDTH_CELLS = 60;
+const PREVIEW_MAX_HEIGHT_CELLS = 12;
 
 interface PreviewSource {
   filePath: string;
-  data: Buffer;
+  base64: string;
   mimeType: string;
   dimensions: ImageDimensions;
-}
-
-interface GalleryLayout {
-  columns: number;
-  rows: number;
-  displayWidth: number;
-  displayHeight: number;
-}
-
-interface RenderedGallery {
-  signature: string;
-  image: Image;
+  /** PNG variant for Kitty placements (f=100 only decodes PNG). Undefined while unconverted. */
+  kittyBase64?: string;
 }
 
 interface Scheduler {
@@ -122,11 +94,12 @@ async function readPreviewSource(filePath: string): Promise<PreviewSource | unde
       ) return undefined;
 
       const data = await handle.readFile();
+      const base64 = data.toString("base64");
       return {
         filePath,
-        data,
+        base64,
         mimeType,
-        dimensions: getImageDimensions(data.toString("base64"), mimeType) ?? { widthPx: 800, heightPx: 600 },
+        dimensions: getImageDimensions(base64, mimeType) ?? { widthPx: 800, heightPx: 600 },
       };
     } finally {
       await handle.close();
@@ -136,161 +109,99 @@ async function readPreviewSource(filePath: string): Promise<PreviewSource | unde
   }
 }
 
-function galleryLayout(width: number, count: number): GalleryLayout {
-  const available = Math.max(1, width);
-  const columns = Math.min(
-    count,
-    MAX_CARDS_PER_ROW,
-    Math.max(1, Math.floor((available + CARD_GAP_CELLS) / (CARD_WIDTH_CELLS + CARD_GAP_CELLS))),
-  );
-  const rows = Math.ceil(count / columns);
-  return {
-    columns,
-    rows,
-    displayWidth: Math.min(available, columns * CARD_WIDTH_CELLS + (columns - 1) * CARD_GAP_CELLS),
-    displayHeight: rows * 7 + Math.max(0, rows - 1),
-  };
-}
-
-function padLine(text: string, width: number): string {
-  const truncated = truncateToWidth(text, width);
-  return truncated + " ".repeat(Math.max(0, width - visibleWidth(truncated)));
-}
-
-async function thumbnailPixels(source: PreviewSource): Promise<RgbaImage | undefined> {
-  let png: Uint8Array | undefined;
+/**
+ * Delete a clipboard image previously previewed by this session. Revalidates
+ * the same containment rules used for reads before unlinking, so only real
+ * Pi-owned temporary clipboard files are removed; anything else stays put.
+ */
+async function deleteClipboardImage(filePath: string): Promise<void> {
+  if (dirname(resolve(filePath)) !== resolve(tmpdir())) return;
+  if (!CLIPBOARD_IMAGE_BASENAME.test(basename(filePath))) return;
   try {
-    const resized = await resizeImage(source.data, source.mimeType, {
-      maxWidth: THUMBNAIL_WIDTH_PX,
-      maxHeight: THUMBNAIL_HEIGHT_PX,
-    });
-    const converted = resized ? await convertToPng(resized.data, resized.mimeType) : null;
-    if (converted) png = Buffer.from(converted.data, "base64");
+    const info = await lstat(filePath);
+    if (!info.isFile() || info.isSymbolicLink()) return;
+    await unlink(filePath);
   } catch {
-    png = undefined;
+    // Already removed or unreadable; nothing to clean up.
   }
-  if (!png && source.mimeType === "image/png") png = source.data;
-  const decoded = png ? decodePng(png) : null;
-  return decoded ? fitWithin(decoded, THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX) : undefined;
 }
 
-async function roundedCard(source: PreviewSource): Promise<RgbaImage> {
-  const card = createImage(CARD_WIDTH_PX, CARD_HEIGHT_PX);
-  const outline = { x: 0, y: 0, width: CARD_WIDTH_PX, height: CARD_HEIGHT_PX };
-  fillRoundedRect(card, {
-    x: CARD_BORDER_PX / 2,
-    y: CARD_BORDER_PX / 2,
-    width: CARD_WIDTH_PX - CARD_BORDER_PX,
-    height: CARD_HEIGHT_PX - CARD_BORDER_PX,
-  }, CARD_RADIUS_PX - CARD_BORDER_PX / 2, CARD_FILL);
-  strokeRoundedRect(card, outline, CARD_RADIUS_PX, CARD_BORDER_PX, CARD_BORDER);
-
-  const thumbnail = await thumbnailPixels(source);
-  if (thumbnail) {
-    const box = { x: THUMBNAIL_INSET_PX, y: THUMBNAIL_INSET_PX, width: THUMBNAIL_WIDTH_PX, height: THUMBNAIL_HEIGHT_PX };
-    const left = box.x + Math.floor((box.width - thumbnail.width) / 2);
-    const top = box.y + Math.floor((box.height - thumbnail.height) / 2);
-    blit(card, thumbnail, left, top, { rect: box, radius: THUMBNAIL_RADIUS_PX });
+/**
+ * Kitty graphics placements (f=100) only decode PNG, so non-PNG sources need a
+ * PNG variant. Conversion uses Pi's native `convertToPng` (bundled WASM, no
+ * external tools) and runs once per source, off the render path.
+ */
+async function prepareKittyVariant(source: PreviewSource): Promise<void> {
+  if (source.mimeType === "image/png") {
+    source.kittyBase64 = source.base64;
+    return;
   }
-  return card;
+  try {
+    const converted = await convertToPng(source.base64, source.mimeType);
+    source.kittyBase64 = converted?.data;
+  } catch {
+    source.kittyBase64 = undefined;
+  }
 }
 
-async function buildGallery(sources: PreviewSource[], layout: GalleryLayout): Promise<Buffer> {
-  const cards = await Promise.all(sources.map(roundedCard));
-  const width = layout.columns * CARD_WIDTH_PX + (layout.columns - 1) * CARD_GAP_PX;
-  const height = layout.rows * CARD_HEIGHT_PX + (layout.rows - 1) * CARD_GAP_PX;
-  const gallery = createImage(width, height);
-  cards.forEach((card, index) => {
-    blit(
-      gallery,
-      card,
-      (index % layout.columns) * (CARD_WIDTH_PX + CARD_GAP_PX),
-      Math.floor(index / layout.columns) * (CARD_HEIGHT_PX + CARD_GAP_PX),
-    );
-  });
-  return encodePng(gallery);
-}
-
-class ImagePreviewGallery implements Component {
-  private gallery?: RenderedGallery;
-  private pendingSignature?: string;
-  private buildGeneration = 0;
+/**
+ * Renders one native Pi `Image` per clipboard attachment inside a `Container`.
+ * The `Image` component owns Kitty/iTerm2 placement and the `[Image: ...]`
+ * text fallback for terminals without inline-image support.
+ */
+class ClipboardPreviewGallery implements Component {
+  private container?: Container;
+  private containerKey?: string;
 
   constructor(
-    private readonly tui: TUI,
     private readonly sources: PreviewSource[],
     private readonly fallbackColor: (text: string) => string,
   ) {}
 
-  private renderFallback(width: number): string[] {
-    const innerWidth = Math.max(1, Math.min(FALLBACK_CARD_WIDTH_CELLS - 2, width - 2));
-    const cardWidth = innerWidth + 2;
-    const columns = Math.max(1, Math.floor((width + CARD_GAP_CELLS) / (cardWidth + CARD_GAP_CELLS)));
-    const lines: string[] = [];
-
-    for (let start = 0; start < this.sources.length; start += columns) {
-      const row = this.sources.slice(start, start + columns);
-      const cards = row.map((source) => {
-        const label = imageFallback(source.mimeType, source.dimensions);
-        return [
-          `╭${"─".repeat(innerWidth)}╮`,
-          `│${padLine(this.fallbackColor(label), innerWidth)}│`,
-          `╰${"─".repeat(innerWidth)}╯`,
-        ];
-      });
-      for (let line = 0; line < 3; line += 1) {
-        lines.push(cards.map((card) => card[line]).join(" "));
+  private build(): Container {
+    const kitty = getCapabilities().images === "kitty";
+    const container = new Container();
+    for (const source of this.sources) {
+      if (kitty && !source.kittyBase64) {
+        const label = imageFallback(source.mimeType, source.dimensions, source.filePath);
+        container.addChild(new Text(this.fallbackColor(label), 1, 0));
+        continue;
       }
+      container.addChild(new Image(
+        kitty ? source.kittyBase64! : source.base64,
+        kitty ? "image/png" : source.mimeType,
+        { fallbackColor: this.fallbackColor },
+        {
+          maxWidthCells: PREVIEW_MAX_WIDTH_CELLS,
+          maxHeightCells: PREVIEW_MAX_HEIGHT_CELLS,
+          filename: source.filePath,
+        },
+        source.dimensions,
+      ));
     }
-
-    return lines;
-  }
-
-  private requestGallery(layout: GalleryLayout, signature: string): void {
-    if (this.pendingSignature === signature) return;
-    this.pendingSignature = signature;
-    const generation = ++this.buildGeneration;
-
-    void buildGallery(this.sources, layout).then((data) => {
-      if (generation !== this.buildGeneration) return;
-      this.gallery = {
-        signature,
-        image: new Image(data.toString("base64"), "image/png", {
-          fallbackColor: this.fallbackColor,
-        }, {
-          maxWidthCells: layout.displayWidth,
-          maxHeightCells: layout.displayHeight,
-        }),
-      };
-      this.pendingSignature = undefined;
-      this.tui.requestRender();
-    }).catch(() => {
-      if (generation !== this.buildGeneration) return;
-      this.pendingSignature = undefined;
-      this.tui.requestRender();
-    });
+    return container;
   }
 
   render(width: number): string[] {
     if (this.sources.length === 0) return [];
-    if (!getCapabilities().images) return this.renderFallback(width);
-
-    const layout = galleryLayout(width, this.sources.length);
-    const signature = `${this.sources.map((source) => source.filePath).join("\0")}\0${layout.columns}`;
-    if (this.gallery?.signature === signature) return this.gallery.image.render(width);
-
-    this.requestGallery(layout, signature);
-    return this.renderFallback(width);
+    const key = [
+      getCapabilities().images ?? "none",
+      ...this.sources.map((source) => `${source.filePath} ${source.kittyBase64 ? "png" : "raw"}`),
+    ].join("\0");
+    if (!this.container || this.containerKey !== key) {
+      this.container = this.build();
+      this.containerKey = key;
+    }
+    return this.container.render(Math.max(1, width));
   }
 
   invalidate(): void {
-    this.gallery?.image.invalidate();
+    this.container?.invalidate();
   }
 
   dispose(): void {
-    this.buildGeneration += 1;
-    this.gallery?.image.invalidate();
-    this.gallery = undefined;
+    this.container = undefined;
+    this.containerKey = undefined;
   }
 }
 
@@ -301,8 +212,8 @@ function renderPreviewWidget(ctx: ExtensionContext, sources: PreviewSource[]): v
   }
 
   const snapshot = [...sources];
-  ctx.ui.setWidget(WIDGET_KEY, (tui, theme) =>
-    new ImagePreviewGallery(tui, snapshot, (text) => theme.fg("muted", text)));
+  ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) =>
+    new ClipboardPreviewGallery(snapshot, (text) => theme.fg("muted", text)));
 }
 
 export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
@@ -314,6 +225,7 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
     let generation = 0;
     let activeContext: ExtensionContext | undefined;
     let sources = new Map<string, PreviewSource>();
+    let trackedFiles = new Set<string>();
     let syncInFlight = false;
     let syncAgain = false;
 
@@ -323,6 +235,7 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       timer = undefined;
       activeContext = undefined;
       sources = new Map();
+      trackedFiles = new Set();
       syncInFlight = false;
       syncAgain = false;
       if (ctx?.mode === "tui") ctx.ui.setWidget(WIDGET_KEY, undefined);
@@ -349,12 +262,17 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
 
       const additions = await Promise.all(paths
         .filter((path) => !sources.has(path))
-        .map(async (path) => [path, await readPreviewSource(path)] as const));
+        .map(async (path) => {
+          const source = await readPreviewSource(path);
+          if (source) await prepareKittyVariant(source);
+          return [path, source] as const;
+        }));
       if (expectedGeneration !== generation || ctx !== activeContext) return;
 
       for (const [path, source] of additions) {
         if (source && !sources.has(path)) {
           sources.set(path, source);
+          trackedFiles.add(path);
           changed = true;
         }
       }
@@ -393,8 +311,10 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       timer.unref?.();
     });
 
-    pi.on("session_shutdown", (_event, ctx) => {
+    pi.on("session_shutdown", async (_event, ctx) => {
+      const tracked = [...trackedFiles];
       stop(ctx);
+      await Promise.all(tracked.map(deleteClipboardImage));
     });
   };
 }

@@ -24,9 +24,9 @@ For project-only installation, add `-l`: `pi install -l npm:@prjct.app/pi-clipbo
 2. Paste an image using Pi's native clipboard flow.
 3. Inspect the preview above the editor, then submit your message normally.
 
-Previews appear automatically; there is no slash command to enable them. Removing an attachment path from the editor removes its preview. Multiple images form a gallery.
+Previews appear automatically; there is no slash command to enable them. Removing an attachment path from the editor removes its preview. Each attachment renders as its own preview.
 
-Only Pi-created temporary clipboard attachments are eligible. Arbitrary image paths do not produce previews. Supported filenames end in PNG, JPEG, WebP, or GIF; individual files over 50 MiB and symbolic links are rejected. Inline thumbnails depend on Pi's terminal image capabilities; other terminals show text cards. The extension itself makes no network requests. Submitting an image still follows Pi's normal model-provider attachment flow.
+Only Pi-created temporary clipboard attachments are eligible. Arbitrary image paths do not produce previews. Supported filenames end in PNG, JPEG, WebP, or GIF; individual files over 50 MiB and symbolic links are rejected. Clipboard images stay on disk as the temporary files Pi created; the files this session previewed are deleted when the Pi session ends. Previews render through Pi's native terminal image support; terminals without it show Pi's native `[Image: ...]` text fallback. The extension itself makes no network requests. Submitting an image still follows Pi's normal model-provider attachment flow.
 
 
 ## Manage the package
@@ -47,11 +47,11 @@ When switching from GitHub to npm, remove the Git installation first, then insta
 
 ## Troubleshooting
 
-If no preview appears, confirm you are in interactive TUI mode and pasted through Pi. Text cards are the expected fallback when inline images are unavailable.
+If no preview appears, confirm you are in interactive TUI mode and pasted through Pi. The `[Image: ...]` text line is the expected fallback when inline images are unavailable.
 
 ## Package and API documentation
 
-Uses `session_start`, `session_shutdown`, `ctx.ui.getEditorText()`, `ctx.ui.setWidget()`, and Pi TUI image components. It retains the native editor and attachment submission flow.
+Uses `session_start`, `session_shutdown`, `ctx.ui.getEditorText()`, `ctx.ui.setWidget()`, and Pi TUI `Image`/`Container` components. Kitty placements receive PNG payloads through Pi's native `convertToPng`. Clipboard files previewed by the session are deleted on `session_shutdown` after revalidating that they are still Pi-owned temporary files. It retains the native editor and attachment submission flow.
 
 See [Package structure and compatibility](docs/package.md) for the manifest, dependency policy, shipped resources, and official references. This package follows the [official Pi package guide](https://github.com/earendil-works/pi/blob/v0.85.1/packages/coding-agent/docs/packages.md) and [extension API guide](https://github.com/earendil-works/pi/blob/v0.85.1/packages/coding-agent/docs/extensions.md) for the tested version.
 

@@ -1,6 +1,6 @@
 {
   "name": "@prjct.app/pi-clipboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Preview pasted images above the native Pi editor.",
   "type": "module",
   "keywords": [

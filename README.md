@@ -1,5 +1,7 @@
 # pi-clipboard
 
+[![pi-clipboard — extension for PI Agent](https://raw.githubusercontent.com/prjct-app/pi-image-preview/main/docs/cover.png)](https://pi.dev)
+
 Preview pasted images above the native Pi editor.
 
 `@prjct.app/pi-clipboard` · Clipboard image previews; one extension.
@@ -39,7 +41,7 @@ pi remove npm:@prjct.app/pi-clipboard
 
 Use `pi config` to enable or disable individual resources. Use `pi config -l` for project settings and add `-l` to removal when you installed locally.
 
-To pin version 0.1.0, use `pi install npm:@prjct.app/pi-clipboard@0.1.0`. Pi skips pinned npm versions during package updates. For a Git installation, update or remove using the same `git:github.com/prjct-app/pi-image-preview` source instead of the npm source.
+To pin version 0.1.1, use `pi install npm:@prjct.app/pi-clipboard@0.1.1`. Pi skips pinned npm versions during package updates. For a Git installation, update or remove using the same `git:github.com/prjct-app/pi-image-preview` source instead of the npm source.
 
 When switching from GitHub to npm, remove the Git installation first, then install the npm package and restart Pi.
 

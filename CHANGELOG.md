@@ -1,3 +1,10 @@
+## [0.1.4](https://github.com/prjct-app/pi-clipboard/compare/v0.1.3...v0.1.4) (2026-09-10)
+
+### Bug Fixes
+
+* delete previewed clipboard temp files on session shutdown ([a64a2b4](https://github.com/prjct-app/pi-clipboard/commit/a64a2b446565fc7867395186097a63b62779e3f4))
+* render clipboard previews with Pi's native image components ([312295b](https://github.com/prjct-app/pi-clipboard/commit/312295b422d2c29bf5708be88c3254cb4bd17e45))
+
 # Changelog
 
 ## 0.1.3

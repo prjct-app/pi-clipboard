@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -248,20 +248,57 @@ test("oversized clipboard-shaped files are not loaded into a preview", async () 
   }
 });
 
-test("session shutdown removes the widget and polling timer", async () => {
+test("session shutdown removes the widget, polling timer, and tracked temp files", async () => {
+  setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+  const path = join(tmpdir(), `pi-clipboard-${randomUUID()}.png`);
+  writeFileSync(path, PNG_1X1);
+
+  const h = await harness(path);
+  assert.ok(h.hasWidget());
+  await h.handlers.get("session_shutdown")?.({}, h.ctx);
+  assert.equal(h.hasWidget(), false);
+  assert.equal(h.scheduler.cleared, true);
+  assert.equal(h.scheduler.callback, undefined);
+  assert.equal(existsSync(path), false);
+});
+
+test("removing a path from the editor keeps the file until the session closes", async () => {
   setCapabilities({ images: null, trueColor: true, hyperlinks: false });
   const path = join(tmpdir(), `pi-clipboard-${randomUUID()}.png`);
   writeFileSync(path, PNG_1X1);
 
   try {
     const h = await harness(path);
-    assert.ok(h.hasWidget());
+    await eventually(() => assert.ok(h.hasWidget()));
+
+    h.setEditorText("");
+    await h.scheduler.tick();
+    await eventually(() => assert.equal(h.hasWidget(), false));
+    assert.equal(existsSync(path), true);
+
     await h.handlers.get("session_shutdown")?.({}, h.ctx);
-    assert.equal(h.hasWidget(), false);
-    assert.equal(h.scheduler.cleared, true);
-    assert.equal(h.scheduler.callback, undefined);
+    assert.equal(existsSync(path), false);
   } finally {
     rmSync(path, { force: true });
+  }
+});
+
+test("session shutdown never deletes files the extension did not preview", async () => {
+  setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+  const previewed = join(tmpdir(), `pi-clipboard-${randomUUID()}.png`);
+  const untracked = join(tmpdir(), `pi-clipboard-${randomUUID()}.png`);
+  writeFileSync(previewed, PNG_1X1);
+  writeFileSync(untracked, PNG_1X1);
+
+  try {
+    const h = await harness(previewed);
+    await eventually(() => assert.ok(h.hasWidget()));
+    await h.handlers.get("session_shutdown")?.({}, h.ctx);
+    assert.equal(existsSync(previewed), false);
+    assert.equal(existsSync(untracked), true);
+  } finally {
+    rmSync(previewed, { force: true });
+    rmSync(untracked, { force: true });
   }
 });
 

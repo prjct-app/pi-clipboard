@@ -5,6 +5,7 @@
 - Render clipboard previews with Pi's native TUI `Image` components instead of a bundled PNG codec and rasterizer.
 - Show Pi's native `[Image: ...]` fallback (with path and dimensions) on terminals without inline-image support.
 - Feed Kitty placements PNG payloads converted through Pi's native `convertToPng`, so JPEG, WebP, and GIF pastes render on Kitty-protocol terminals such as Ghostty, Kitty, WezTerm, and Warp.
+- Delete the temporary clipboard files the session previewed when the Pi session closes, so pasted screenshots no longer accumulate in the system temporary directory. Files are revalidated as Pi-owned temporary clipboard files before deletion; anything the extension did not preview stays untouched.
 - Keep the security posture unchanged: only Pi temporary clipboard files are read, symbolic links and files over 50 MiB are rejected, and no network calls or external tools are required.
 
 ## 0.1.3

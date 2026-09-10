@@ -35,7 +35,7 @@ Third-party runtime dependencies belong in `dependencies`. Companion extensions 
 
 ## Public interfaces
 
-Uses `session_start`, `session_shutdown`, `ctx.ui.getEditorText()`, `ctx.ui.setWidget()`, and Pi TUI `Image`/`Container` components. Kitty placements receive PNG payloads through Pi's native `convertToPng`. It retains the native editor and attachment submission flow.
+Uses `session_start`, `session_shutdown`, `ctx.ui.getEditorText()`, `ctx.ui.setWidget()`, and Pi TUI `Image`/`Container` components. Kitty placements receive PNG payloads through Pi's native `convertToPng`. Clipboard files previewed by the session are deleted on `session_shutdown` after revalidating that they are still Pi-owned temporary files. It retains the native editor and attachment submission flow.
 
 ## Published contents
 

@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, open } from "node:fs/promises";
+import { lstat, open, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, resolve } from "node:path";
 
@@ -110,6 +110,23 @@ async function readPreviewSource(filePath: string): Promise<PreviewSource | unde
 }
 
 /**
+ * Delete a clipboard image previously previewed by this session. Revalidates
+ * the same containment rules used for reads before unlinking, so only real
+ * Pi-owned temporary clipboard files are removed; anything else stays put.
+ */
+async function deleteClipboardImage(filePath: string): Promise<void> {
+  if (dirname(resolve(filePath)) !== resolve(tmpdir())) return;
+  if (!CLIPBOARD_IMAGE_BASENAME.test(basename(filePath))) return;
+  try {
+    const info = await lstat(filePath);
+    if (!info.isFile() || info.isSymbolicLink()) return;
+    await unlink(filePath);
+  } catch {
+    // Already removed or unreadable; nothing to clean up.
+  }
+}
+
+/**
  * Kitty graphics placements (f=100) only decode PNG, so non-PNG sources need a
  * PNG variant. Conversion uses Pi's native `convertToPng` (bundled WASM, no
  * external tools) and runs once per source, off the render path.
@@ -208,6 +225,7 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
     let generation = 0;
     let activeContext: ExtensionContext | undefined;
     let sources = new Map<string, PreviewSource>();
+    let trackedFiles = new Set<string>();
     let syncInFlight = false;
     let syncAgain = false;
 
@@ -217,6 +235,7 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       timer = undefined;
       activeContext = undefined;
       sources = new Map();
+      trackedFiles = new Set();
       syncInFlight = false;
       syncAgain = false;
       if (ctx?.mode === "tui") ctx.ui.setWidget(WIDGET_KEY, undefined);
@@ -253,6 +272,7 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       for (const [path, source] of additions) {
         if (source && !sources.has(path)) {
           sources.set(path, source);
+          trackedFiles.add(path);
           changed = true;
         }
       }
@@ -291,8 +311,10 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       timer.unref?.();
     });
 
-    pi.on("session_shutdown", (_event, ctx) => {
+    pi.on("session_shutdown", async (_event, ctx) => {
+      const tracked = [...trackedFiles];
       stop(ctx);
+      await Promise.all(tracked.map(deleteClipboardImage));
     });
   };
 }

@@ -1,3 +1,9 @@
+## [0.1.5](https://github.com/prjct-app/pi-clipboard/compare/v0.1.4...v0.1.5) (2026-09-10)
+
+### Bug Fixes
+
+* recognize timestamped Pi clipboard attachments ([f9769f4](https://github.com/prjct-app/pi-clipboard/commit/f9769f46d25cb90a19913b2486d0bbd61f6a4c9d))
+
 ## [0.1.4](https://github.com/prjct-app/pi-clipboard/compare/v0.1.3...v0.1.4) (2026-09-10)
 
 ### Bug Fixes

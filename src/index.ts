@@ -19,7 +19,10 @@ import {
   type ImageDimensions,
 } from "@earendil-works/pi-tui";
 
-const CLIPBOARD_IMAGE_NAME_SOURCE = "pi-clipboard-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(?:png|jpe?g|webp|gif)";
+const IMAGE_EXTENSION_SOURCE = "(?:png|jpe?g|webp|gif)";
+const UUID_CLIPBOARD_IMAGE_NAME_SOURCE = `pi-clipboard-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.${IMAGE_EXTENSION_SOURCE}`;
+const TIMESTAMPED_CLIPBOARD_IMAGE_NAME_SOURCE = `clipboard-[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{8}\\.${IMAGE_EXTENSION_SOURCE}`;
+const CLIPBOARD_IMAGE_NAME_SOURCE = `(?:${UUID_CLIPBOARD_IMAGE_NAME_SOURCE}|${TIMESTAMPED_CLIPBOARD_IMAGE_NAME_SOURCE})`;
 const CLIPBOARD_IMAGE_FILENAME = new RegExp(CLIPBOARD_IMAGE_NAME_SOURCE, "gi");
 const CLIPBOARD_IMAGE_BASENAME = new RegExp(`^${CLIPBOARD_IMAGE_NAME_SOURCE}$`, "i");
 const IMAGE_MIME_TYPES: Record<string, string> = {
@@ -60,7 +63,7 @@ const systemScheduler: Scheduler = {
   clearInterval: (handle) => clearInterval(handle),
 };
 
-/** Resolve only filenames produced by Pi's native clipboard flow. */
+/** Resolve only filenames produced by Pi's native clipboard flows. */
 export function clipboardImagePaths(editorText: string): string[] {
   const paths = new Set<string>();
   const matcher = new RegExp(CLIPBOARD_IMAGE_FILENAME.source, CLIPBOARD_IMAGE_FILENAME.flags);

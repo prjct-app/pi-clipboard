@@ -117,6 +117,23 @@ test("uses a widget and discovers an existing native Pi clipboard attachment", a
   }
 });
 
+test("previews and cleans up Pi timestamped clipboard attachments", async () => {
+  setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+  const suffix = randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
+  const path = join(tmpdir(), `clipboard-2026-09-10-000958-${suffix}.png`);
+  writeFileSync(path, PNG_1X1);
+
+  try {
+    const h = await harness(path);
+    assert.ok(h.hasWidget());
+    assert.match(visible(h.widget()!, 200).join("\n"), /\[Image: .*clipboard-2026-09-10-000958-.*image\/png.*1x1\]/);
+    await h.handlers.get("session_shutdown")?.({}, h.ctx);
+    assert.equal(existsSync(path), false);
+  } finally {
+    rmSync(path, { force: true });
+  }
+});
+
 test("polling adds all native attachments and removes previews when paths disappear", async () => {
   setCapabilities({ images: null, trueColor: true, hyperlinks: false });
   const first = join(tmpdir(), `pi-clipboard-${randomUUID()}.png`);
@@ -308,4 +325,9 @@ test("path discovery accepts only exact Pi clipboard paths in the system temp di
   assert.deepEqual(clipboardImagePaths(`${valid} ${valid}`), [valid]);
   assert.deepEqual(clipboardImagePaths(`/project/${copiedName}`), []);
   assert.deepEqual(clipboardImagePaths("/tmp/screenshot.png"), []);
+});
+
+test("path discovery accepts Pi timestamped clipboard attachments", () => {
+  const valid = join(tmpdir(), "clipboard-2026-09-10-000958-6083DDAA.png");
+  assert.deepEqual(clipboardImagePaths(valid), [valid]);
 });

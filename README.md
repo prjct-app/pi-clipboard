@@ -2,7 +2,7 @@
 
 [![pi-clipboard — extension for PI Agent](https://raw.githubusercontent.com/prjct-app/pi-clipboard/main/docs/cover.png)](https://pi.dev)
 
-Preview pasted images above the native Pi editor.
+Preview pasted images in PI Agent before sending them, with inline thumbnails and a compact attachment gallery.
 
 `@prjct.app/pi-clipboard` · Clipboard image previews; one extension.
 

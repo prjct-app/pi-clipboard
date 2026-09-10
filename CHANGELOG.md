@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Align repository, documentation, and cover URLs with the npm package name.
+
 ## 0.1.1
 
 - Add a dedicated cover to the GitHub and npm README.

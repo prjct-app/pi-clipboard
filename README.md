@@ -26,7 +26,7 @@ For project-only installation, add `-l`: `pi install -l npm:@prjct.app/pi-clipbo
 
 Previews appear automatically; there is no slash command to enable them. Removing an attachment path from the editor removes its preview. Each attachment renders as its own preview.
 
-Only Pi-created temporary clipboard attachments are eligible. Arbitrary image paths do not produce previews. Supported filenames end in PNG, JPEG, WebP, or GIF; individual files over 50 MiB and symbolic links are rejected. Clipboard images stay on disk as the temporary files Pi created; the files this session previewed are deleted when the Pi session ends. Previews render through Pi's native terminal image support; terminals without it show Pi's native `[Image: ...]` text fallback. The extension itself makes no network requests. Submitting an image still follows Pi's normal model-provider attachment flow.
+Only Pi-created temporary clipboard attachments are eligible. The extension recognizes Pi's UUID (`pi-clipboard-<UUID>`) and timestamped (`clipboard-<date>-<time>-<hex>`) temporary filename forms; arbitrary image paths do not produce previews. Supported filenames end in PNG, JPEG, WebP, or GIF; individual files over 50 MiB and symbolic links are rejected. Clipboard images stay on disk as the temporary files Pi created; the files this session previewed are deleted when the Pi session ends. Previews render through Pi's native terminal image support; terminals without it show Pi's native `[Image: ...]` text fallback. The extension itself makes no network requests. Submitting an image still follows Pi's normal model-provider attachment flow.
 
 
 ## Manage the package

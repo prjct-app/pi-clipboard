@@ -1,6 +1,6 @@
 {
   "name": "@prjct.app/pi-clipboard",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Preview pasted images in PI Agent before sending them, with inline thumbnails and a compact attachment gallery.",
   "type": "module",
   "keywords": [

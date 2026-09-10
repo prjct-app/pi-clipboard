@@ -1,57 +1,71 @@
-# pi-image-preview
+# pi-clipboard
 
-Safe inline previews for images pasted into the [Pi coding agent](https://github.com/earendil-works/pi-mono).
+Preview pasted images above the native Pi editor.
 
-`pi-image-preview` watches Pi's native editor for clipboard attachment paths and renders a compact gallery above it. The attachment path stays in Pi's editor, so submission continues through Pi's native image flow.
-
-## Why this package
-
-- Uses a Pi widget instead of replacing the native editor.
-- Uses Pi's bundled TUI image support, including Kitty graphics where available.
-- Falls back to textual image cards in unsupported terminals.
-- Supports multiple images, horizontal galleries, and wrapping.
-- Stops polling and removes its widget on session shutdown or extension reload.
-- Reads only Pi clipboard files named `pi-clipboard-<uuid>.<image-extension>` directly inside the system temporary directory.
-- Rejects symbolic links and files larger than 50 MiB, and never sends image data over the network.
+`@prjct.app/pi-clipboard` · Clipboard image previews; one extension.
 
 ## Install
 
-The package is currently available from GitHub:
+Requires Pi installed separately and Node.js **22.19 or later**. Compatibility is tested with **Pi 0.85.1**; newer versions are not yet verified. This is an independent community package.
+
+Install with Pi's package manager:
 
 ```sh
-pi install git:github.com/prjct-app/pi-image-preview
+pi install npm:@prjct.app/pi-clipboard
 ```
 
-Restart Pi after installation. To remove it:
+For project-only installation, add `-l`: `pi install -l npm:@prjct.app/pi-clipboard`. Restart Pi after installation. Do not install the same extension from both GitHub and npm: Pi treats those as different package identities.
+
+## Usage
+
+1. Start an interactive Pi session after installing the package.
+2. Paste an image using Pi's native clipboard flow.
+3. Inspect the preview above the editor, then submit your message normally.
+
+Previews appear automatically; there is no slash command to enable them. Removing an attachment path from the editor removes its preview. Multiple images form a gallery.
+
+Only Pi-created temporary clipboard attachments are eligible. Arbitrary image paths do not produce previews. Supported filenames end in PNG, JPEG, WebP, or GIF; individual files over 50 MiB and symbolic links are rejected. Inline thumbnails depend on Pi's terminal image capabilities; other terminals show text cards. The extension itself makes no network requests. Submitting an image still follows Pi's normal model-provider attachment flow.
+
+
+## Manage the package
+
+For an npm installation:
 
 ```sh
-pi remove git:github.com/prjct-app/pi-image-preview
+pi list
+pi update npm:@prjct.app/pi-clipboard
+pi remove npm:@prjct.app/pi-clipboard
 ```
 
-The npm identity is reserved as `@prjct-app/pi-image-preview`; the unscoped `pi-image-preview` name belongs to a different community project. This repository has not been published to npm yet.
+Use `pi config` to enable or disable individual resources. Use `pi config -l` for project settings and add `-l` to removal when you installed locally.
 
-## Compatibility
+To pin version 0.1.0, use `pi install npm:@prjct.app/pi-clipboard@0.1.0`. Pi skips pinned npm versions during package updates. For a Git installation, update or remove using the same `git:github.com/prjct-app/pi-image-preview` source instead of the npm source.
 
-Tested with Pi `0.85.1` and Node.js `22.19+`.
+When switching from GitHub to npm, remove the Git installation first, then install the npm package and restart Pi.
 
-Image rendering follows Pi TUI capabilities. Terminals with Kitty graphics support receive real inline thumbnails; other terminals receive accessible textual cards. Pi's normal clipboard behavior and model attachment support still determine whether an image can be submitted.
+## Troubleshooting
 
-## Design
+If no preview appears, confirm you are in interactive TUI mode and pasted through Pi. Text cards are the expected fallback when inline images are unavailable.
 
-The extension polls only the native editor text at a short interval. It reads a file once when a new eligible attachment path appears, composes previews into one PNG gallery, and renders that gallery through Pi's public `Image` component. It does not install a custom editor, intercept keyboard input, transform prompts, spawn subprocesses, or register process-level signal handlers.
+## Package and API documentation
+
+Uses `session_start`, `session_shutdown`, `ctx.ui.getEditorText()`, `ctx.ui.setWidget()`, and Pi TUI image components. It retains the native editor and attachment submission flow.
+
+See [Package structure and compatibility](docs/package.md) for the manifest, dependency policy, shipped resources, and official references. This package follows the [official Pi package guide](https://github.com/earendil-works/pi/blob/v0.85.1/packages/coding-agent/docs/packages.md) and [extension API guide](https://github.com/earendil-works/pi/blob/v0.85.1/packages/coding-agent/docs/extensions.md) for the tested version.
 
 ## Development
 
+From a repository checkout:
+
 ```sh
-npm install
+npm ci --ignore-scripts
 npm run check
 npm test
+npm run check:package
 ```
 
-Tests use temporary image files and do not access the real clipboard, Pi configuration, network, or model APIs.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) before making changes.
+Pi loads the TypeScript entry point directly; no build step is required. To try this checkout for one run, use `pi -e .`. Tests use isolated temporary state and do not call model APIs. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules and [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE).

@@ -24,6 +24,7 @@
     "image": "https://raw.githubusercontent.com/prjct-app/pi-clipboard/main/docs/cover.png"
   },
   "scripts": {
+    "build": "rm -rf build && mkdir -p build && npm pack --ignore-scripts --pack-destination build >/dev/null && tar -xzf build/*.tgz -C build --strip-components=1 && rm -f build/*.tgz",
     "check": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "check:package": "npm pack --dry-run --ignore-scripts"

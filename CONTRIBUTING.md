@@ -7,6 +7,7 @@
 - Keep image data local and limit file access to Pi clipboard files in the system temporary directory.
 - Keep tests offline and use temporary files rather than the real Pi configuration or clipboard.
 - Run `npm run check` and `npm test` before review.
+- Build the compiled local copy Pi loads with `npm run build:pi`. It writes `~/.pi/agent/builds/<package>` outside the repository, because compiled code inside it would load the repository's development copy of Pi instead of the host's.
 - Never push, open or merge a pull request, publish, or deploy without explicit authorization.
 
 ## Package documentation

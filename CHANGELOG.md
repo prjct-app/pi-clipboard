@@ -1,3 +1,9 @@
+## [0.1.8](https://github.com/prjct-app/pi-clipboard/compare/v0.1.7...v0.1.8) (2026-09-17)
+
+### Bug Fixes
+
+* keep clipboard attachments across reload and poll less often ([c873ce3](https://github.com/prjct-app/pi-clipboard/commit/c873ce350983eea08158a69fbffa188c76192f59))
+
 ## [0.1.7](https://github.com/prjct-app/pi-clipboard/compare/v0.1.6...v0.1.7) (2026-09-17)
 
 ## [0.1.6](https://github.com/prjct-app/pi-clipboard/compare/v0.1.5...v0.1.6) (2026-09-10)

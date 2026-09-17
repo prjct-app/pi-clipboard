@@ -24,10 +24,12 @@ type WidgetFactory = (tui: unknown, theme: unknown) => Component;
 class FakeScheduler {
   callback?: () => void;
   cleared = false;
+  intervalMs?: number;
 
-  setInterval(callback: () => void): ReturnType<typeof setInterval> {
+  setInterval(callback: () => void, intervalMs: number): ReturnType<typeof setInterval> {
     this.callback = callback;
     this.cleared = false;
+    this.intervalMs = intervalMs;
     return { unref() {} } as ReturnType<typeof setInterval>;
   }
 
@@ -272,11 +274,29 @@ test("session shutdown removes the widget, polling timer, and tracked temp files
 
   const h = await harness(path);
   assert.ok(h.hasWidget());
-  await h.handlers.get("session_shutdown")?.({}, h.ctx);
+  assert.equal(h.scheduler.intervalMs, 500);
+  await h.handlers.get("session_shutdown")?.({ reason: "quit" }, h.ctx);
   assert.equal(h.hasWidget(), false);
   assert.equal(h.scheduler.cleared, true);
   assert.equal(h.scheduler.callback, undefined);
   assert.equal(existsSync(path), false);
+});
+
+test("reload stops previewing without deleting an unsent clipboard attachment", async () => {
+  setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+  const path = join(tmpdir(), `pi-clipboard-${randomUUID()}.png`);
+  writeFileSync(path, PNG_1X1);
+
+  try {
+    const h = await harness(path);
+    assert.ok(h.hasWidget());
+    await h.handlers.get("session_shutdown")?.({ reason: "reload" }, h.ctx);
+    assert.equal(h.hasWidget(), false);
+    assert.equal(h.scheduler.cleared, true);
+    assert.equal(existsSync(path), true);
+  } finally {
+    rmSync(path, { force: true });
+  }
 });
 
 test("removing a path from the editor keeps the file until the session closes", async () => {

@@ -34,7 +34,7 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 };
 
 const WIDGET_KEY = "pi-image-preview";
-const DEFAULT_POLL_INTERVAL_MS = 150;
+const DEFAULT_POLL_INTERVAL_MS = 500;
 const MAX_PREVIEW_FILE_BYTES = 50 * 1024 * 1024;
 const PREVIEW_MAX_WIDTH_CELLS = 60;
 const PREVIEW_MAX_HEIGHT_CELLS = 12;
@@ -314,10 +314,10 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       timer.unref?.();
     });
 
-    pi.on("session_shutdown", async (_event, ctx) => {
+    pi.on("session_shutdown", async (event, ctx) => {
       const tracked = [...trackedFiles];
       stop(ctx);
-      await Promise.all(tracked.map(deleteClipboardImage));
+      if (event.reason !== "reload") await Promise.all(tracked.map(deleteClipboardImage));
     });
   };
 }

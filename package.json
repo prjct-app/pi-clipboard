@@ -64,6 +64,7 @@
     "CONTRIBUTING.md",
     "CHANGELOG.md",
     "docs/package.md",
-    "docs/releases.md"
+    "docs/releases.md",
+    "docs/cover.png"
   ]
 }

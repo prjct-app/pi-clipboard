@@ -9,6 +9,7 @@ import { stripVTControlCharacters } from "node:util";
 import { setCapabilities, visibleWidth, type Component } from "@earendil-works/pi-tui";
 
 import imagePreview, { clipboardImagePaths, createImagePreviewExtension } from "../index.ts";
+import { nextSources } from "../src/index.ts";
 
 const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -350,4 +351,12 @@ test("path discovery accepts only exact Pi clipboard paths in the system temp di
 test("path discovery accepts Pi timestamped clipboard attachments", () => {
   const valid = join(tmpdir(), "clipboard-2026-09-10-000958-6083DDAA.png");
   assert.deepEqual(clipboardImagePaths(valid), [valid]);
+});
+
+test("preview sources change as a new value and keep the old one intact", () => {
+  const current = new Map([["/tmp/a.png", "A"], ["/tmp/b.png", "B"]]);
+  const next = nextSources(current, ["/tmp/b.png", "/tmp/c.png"], [["/tmp/c.png", "C"]]);
+  assert.deepEqual([...next], [["/tmp/b.png", "B"], ["/tmp/c.png", "C"]]);
+  assert.deepEqual([...current.keys()], ["/tmp/a.png", "/tmp/b.png"]);
+  assert.equal(nextSources(current, ["/tmp/a.png", "/tmp/b.png"], [["/tmp/x.png", undefined]]), current, "nothing changed: same value, no redraw");
 });

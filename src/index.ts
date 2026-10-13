@@ -39,14 +39,14 @@ const MAX_PREVIEW_FILE_BYTES = 50 * 1024 * 1024;
 const PREVIEW_MAX_WIDTH_CELLS = 60;
 const PREVIEW_MAX_HEIGHT_CELLS = 12;
 
-interface PreviewSource {
+type PreviewSource = Readonly<{
   filePath: string;
   base64: string;
   mimeType: string;
   dimensions: ImageDimensions;
-  /** PNG variant for Kitty placements (f=100 only decodes PNG). Undefined while unconverted. */
+  /** PNG variant for Kitty placements (f=100 only decodes PNG). Undefined when conversion failed. */
   kittyBase64?: string;
-}
+}>;
 
 interface Scheduler {
   setInterval(callback: () => void, intervalMs: number): ReturnType<typeof setInterval>;
@@ -134,17 +134,29 @@ async function deleteClipboardImage(filePath: string): Promise<void> {
  * PNG variant. Conversion uses Pi's native `convertToPng` (bundled WASM, no
  * external tools) and runs once per source, off the render path.
  */
-async function prepareKittyVariant(source: PreviewSource): Promise<void> {
-  if (source.mimeType === "image/png") {
-    source.kittyBase64 = source.base64;
-    return;
-  }
+async function withKittyVariant(source: PreviewSource): Promise<PreviewSource> {
+  if (source.mimeType === "image/png") return { ...source, kittyBase64: source.base64 };
   try {
     const converted = await convertToPng(source.base64, source.mimeType);
-    source.kittyBase64 = converted?.data;
+    return { ...source, kittyBase64: converted?.data };
   } catch {
-    source.kittyBase64 = undefined;
+    return source;
   }
+}
+
+/**
+ * The previews after the editor changed: images no longer referenced leave, newly read ones join.
+ * Returns the same map when nothing changed, so callers can skip a redraw.
+ */
+export function nextSources<T>(
+  current: ReadonlyMap<string, T>,
+  paths: readonly string[],
+  additions: readonly (readonly [string, T | undefined])[],
+): ReadonlyMap<string, T> {
+  const referenced = new Set(paths);
+  const kept = [...current].filter(([path]) => referenced.has(path));
+  const added = additions.filter((entry): entry is readonly [string, T] => entry[1] !== undefined && !current.has(entry[0]));
+  return kept.length === current.size && added.length === 0 ? current : new Map([...kept, ...added]);
 }
 
 /**
@@ -153,11 +165,11 @@ async function prepareKittyVariant(source: PreviewSource): Promise<void> {
  * text fallback for terminals without inline-image support.
  */
 class ClipboardPreviewGallery implements Component {
-  private container?: Container;
-  private containerKey?: string;
+  /** Render cache: rebuilt only when the terminal's image support or the sources change. */
+  private cache?: Readonly<{ key: string; container: Container }>;
 
   constructor(
-    private readonly sources: PreviewSource[],
+    private readonly sources: readonly PreviewSource[],
     private readonly fallbackColor: (text: string) => string,
   ) {}
 
@@ -191,20 +203,16 @@ class ClipboardPreviewGallery implements Component {
       getCapabilities().images ?? "none",
       ...this.sources.map((source) => `${source.filePath} ${source.kittyBase64 ? "png" : "raw"}`),
     ].join("\0");
-    if (!this.container || this.containerKey !== key) {
-      this.container = this.build();
-      this.containerKey = key;
-    }
-    return this.container.render(Math.max(1, width));
+    if (this.cache?.key !== key) this.cache = { key, container: this.build() };
+    return this.cache.container.render(Math.max(1, width));
   }
 
   invalidate(): void {
-    this.container?.invalidate();
+    this.cache?.container.invalidate();
   }
 
   dispose(): void {
-    this.container = undefined;
-    this.containerKey = undefined;
+    this.cache = undefined;
   }
 }
 
@@ -217,41 +225,55 @@ function readEditorText(ctx: ExtensionContext): string | undefined {
   }
 }
 
-function renderPreviewWidget(ctx: ExtensionContext, sources: PreviewSource[]): void {
+function renderPreviewWidget(ctx: ExtensionContext, sources: readonly PreviewSource[]): void {
   if (sources.length === 0) {
     ctx.ui.setWidget(WIDGET_KEY, undefined);
     return;
   }
 
-  const snapshot = [...sources];
   ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) =>
-    new ClipboardPreviewGallery(snapshot, (text) => theme.fg("muted", text)));
+    new ClipboardPreviewGallery(sources, (text) => theme.fg("muted", text)));
 }
+
+/** Everything the preview knows, as one immutable value that is replaced on every change. */
+type PreviewState = Readonly<{
+  timer: ReturnType<typeof setInterval> | undefined;
+  /** Bumped on every stop, so a sync that started earlier never writes into a newer session. */
+  generation: number;
+  activeContext: ExtensionContext | undefined;
+  sources: ReadonlyMap<string, PreviewSource>;
+  /** Clipboard files shown in this session, deleted when the session ends. */
+  trackedFiles: ReadonlySet<string>;
+  syncInFlight: boolean;
+  syncAgain: boolean;
+}>;
+
+const idleState = (generation: number): PreviewState => ({
+  timer: undefined,
+  generation,
+  activeContext: undefined,
+  sources: new Map(),
+  trackedFiles: new Set(),
+  syncInFlight: false,
+  syncAgain: false,
+});
 
 export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
   const scheduler = options.scheduler ?? systemScheduler;
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 
   return function imagePreview(pi: ExtensionAPI): void {
-    const state = {
-      timer: undefined as ReturnType<typeof setInterval> | undefined,
-      generation: 0,
-      activeContext: undefined as ExtensionContext | undefined,
-      sources: new Map<string, PreviewSource>(),
-      trackedFiles: new Set<string>(),
-      syncInFlight: false,
-      syncAgain: false,
+    // The one cell that changes: it holds the current state value, which is always replaced, never edited.
+    const session: { state: PreviewState } = { state: idleState(0) };
+    const set = (change: Partial<PreviewState>): void => {
+      session.state = { ...session.state, ...change };
     };
+    const isCurrent = (ctx: ExtensionContext, generation: number): boolean =>
+      generation === session.state.generation && ctx === session.state.activeContext;
 
     const stop = (ctx?: ExtensionContext) => {
-      state.generation += 1;
-      if (state.timer) scheduler.clearInterval(state.timer);
-      state.timer = undefined;
-      state.activeContext = undefined;
-      state.sources = new Map();
-      state.trackedFiles = new Set();
-      state.syncInFlight = false;
-      state.syncAgain = false;
+      if (session.state.timer) scheduler.clearInterval(session.state.timer);
+      session.state = idleState(session.state.generation + 1);
       if (ctx?.mode === "tui") ctx.ui.setWidget(WIDGET_KEY, undefined);
     };
 
@@ -260,49 +282,37 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       if (editorText === undefined) return;
 
       const paths = clipboardImagePaths(editorText);
-      const pathSet = new Set(paths);
-      const changes = { changed: false };
-
-      for (const path of state.sources.keys()) {
-        if (!pathSet.has(path)) {
-          state.sources.delete(path);
-          changes.changed = true;
-        }
-      }
-
       const additions = await Promise.all(paths
-        .filter((path) => !state.sources.has(path))
+        .filter((path) => !session.state.sources.has(path))
         .map(async (path) => {
           const source = await readPreviewSource(path);
-          if (source) await prepareKittyVariant(source);
-          return [path, source] as const;
+          return [path, source && await withKittyVariant(source)] as const;
         }));
-      if (expectedGeneration !== state.generation || ctx !== state.activeContext) return;
+      if (!isCurrent(ctx, expectedGeneration)) return;
 
-      for (const [path, source] of additions) {
-        if (source && !state.sources.has(path)) {
-          state.sources.set(path, source);
-          state.trackedFiles.add(path);
-          changes.changed = true;
-        }
-      }
+      const sources = nextSources(session.state.sources, paths, additions);
+      if (sources === session.state.sources) return;
+      set({ sources, trackedFiles: new Set([...session.state.trackedFiles, ...sources.keys()]) });
+      renderPreviewWidget(ctx, [...sources.values()]);
+    };
 
-      if (changes.changed) renderPreviewWidget(ctx, [...state.sources.values()]);
+    // Editor changes that arrive during a sync are folded into one more pass, never run in parallel.
+    const drain = async (ctx: ExtensionContext, expectedGeneration: number): Promise<void> => {
+      set({ syncAgain: false });
+      await syncOnce(ctx, expectedGeneration);
+      if (session.state.syncAgain && isCurrent(ctx, expectedGeneration)) return drain(ctx, expectedGeneration);
     };
 
     const sync = async (ctx: ExtensionContext, expectedGeneration: number) => {
-      if (state.syncInFlight) {
-        state.syncAgain = true;
+      if (session.state.syncInFlight) {
+        set({ syncAgain: true });
         return;
       }
-      state.syncInFlight = true;
+      set({ syncInFlight: true });
       try {
-        do {
-          state.syncAgain = false;
-          await syncOnce(ctx, expectedGeneration);
-        } while (state.syncAgain && expectedGeneration === state.generation && ctx === state.activeContext);
+        await drain(ctx, expectedGeneration);
       } finally {
-        state.syncInFlight = false;
+        set({ syncInFlight: false });
       }
     };
 
@@ -310,19 +320,20 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       stop();
       if (ctx.mode !== "tui") return;
 
-      state.activeContext = ctx;
-      const expectedGeneration = state.generation;
+      set({ activeContext: ctx });
+      const expectedGeneration = session.state.generation;
       await sync(ctx, expectedGeneration);
-      if (expectedGeneration !== state.generation || ctx !== state.activeContext) return;
+      if (!isCurrent(ctx, expectedGeneration)) return;
 
-      state.timer = scheduler.setInterval(() => {
+      const timer = scheduler.setInterval(() => {
         void sync(ctx, expectedGeneration);
       }, pollIntervalMs);
-      state.timer.unref?.();
+      timer.unref?.();
+      set({ timer });
     });
 
     pi.on("session_shutdown", async (event, ctx) => {
-      const tracked = [...state.trackedFiles];
+      const tracked = [...session.state.trackedFiles];
       stop(ctx);
       if (event.reason !== "reload") await Promise.all(tracked.map(deleteClipboardImage));
     });

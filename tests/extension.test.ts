@@ -47,8 +47,8 @@ class FakeScheduler {
 async function harness(initialText = "", mode = "tui") {
   const handlers = new Map<string, Function>();
   const scheduler = new FakeScheduler();
-  let editorText = initialText;
-  let widgetFactory: WidgetFactory | undefined;
+  const editorText = { value: initialText };
+  const preview = { widget: undefined as WidgetFactory | undefined };
 
   createImagePreviewExtension({ scheduler: scheduler as never })({
     on: (name: string, handler: Function) => handlers.set(name, handler),
@@ -57,9 +57,9 @@ async function harness(initialText = "", mode = "tui") {
   const ctx = {
     mode,
     ui: {
-      getEditorText: () => editorText,
+      getEditorText: () => editorText.value,
       setEditorComponent: () => assert.fail("image-preview must not replace Pi's editor"),
-      setWidget: (_key: string, content: WidgetFactory | undefined) => { widgetFactory = content; },
+      setWidget: (_key: string, content: WidgetFactory | undefined) => { preview.widget = content; },
     },
   };
 
@@ -69,15 +69,15 @@ async function harness(initialText = "", mode = "tui") {
     ctx,
     handlers,
     scheduler,
-    setEditorText(value: string) { editorText = value; },
-    getEditorText() { return editorText; },
+    setEditorText(value: string) { editorText.value = value; },
+    getEditorText() { return editorText.value; },
     widget() {
-      return widgetFactory?.(
+      return preview.widget?.(
         { terminal: { rows: 40, columns: 80 }, requestRender: () => {} },
         { fg: (_color: string, text: string) => text },
       );
     },
-    hasWidget() { return widgetFactory !== undefined; },
+    hasWidget() { return preview.widget !== undefined; },
   };
 }
 
@@ -89,17 +89,17 @@ function visible(component: Component, width = 80): string[] {
 
 async function eventually(assertion: () => void, timeoutMs = 2000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  let lastError: unknown;
+  const failure = { error: undefined as unknown };
   while (Date.now() < deadline) {
     try {
       assertion();
       return;
     } catch (error) {
-      lastError = error;
+      failure.error = error;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
-  throw lastError;
+  throw failure.error;
 }
 
 test("uses a widget and discovers an existing native Pi clipboard attachment", async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@prjct.app/pi-clipboard",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Preview pasted images in PI Agent before sending them, with inline thumbnails and a compact attachment gallery.",
   "type": "module",
   "keywords": [
@@ -25,7 +25,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "export PI_CODING_AGENT_DIR=\"$(mktemp -d)\" PRJCT_HOME=\"$(mktemp -d)\" && node --import tsx --test tests/*.test.ts",
     "check:package": "npm pack --dry-run --ignore-scripts",
     "build:pi": "node scripts/build-pi.mjs"
   },

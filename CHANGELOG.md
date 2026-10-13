@@ -1,3 +1,8 @@
+## 0.1.11 (2026-10-12)
+
+- Code: no `let` bindings; mutable state lives in one named object. Behaviour is unchanged.
+- Tests run with temporary Pi and prjct folders, so they never touch your real configuration.
+
 ## [0.1.10](https://github.com/prjct-app/pi-clipboard/compare/v0.1.9...v0.1.10) (2026-10-02)
 
 ### Bug Fixes

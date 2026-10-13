@@ -208,6 +208,15 @@ class ClipboardPreviewGallery implements Component {
   }
 }
 
+/** The editor's text, or undefined when the editor cannot be read right now. */
+function readEditorText(ctx: ExtensionContext): string | undefined {
+  try {
+    return ctx.ui.getEditorText();
+  } catch {
+    return undefined;
+  }
+}
+
 function renderPreviewWidget(ctx: ExtensionContext, sources: PreviewSource[]): void {
   if (sources.length === 0) {
     ctx.ui.setWidget(WIDGET_KEY, undefined);
@@ -224,78 +233,76 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 
   return function imagePreview(pi: ExtensionAPI): void {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    let generation = 0;
-    let activeContext: ExtensionContext | undefined;
-    let sources = new Map<string, PreviewSource>();
-    let trackedFiles = new Set<string>();
-    let syncInFlight = false;
-    let syncAgain = false;
+    const state = {
+      timer: undefined as ReturnType<typeof setInterval> | undefined,
+      generation: 0,
+      activeContext: undefined as ExtensionContext | undefined,
+      sources: new Map<string, PreviewSource>(),
+      trackedFiles: new Set<string>(),
+      syncInFlight: false,
+      syncAgain: false,
+    };
 
     const stop = (ctx?: ExtensionContext) => {
-      generation += 1;
-      if (timer) scheduler.clearInterval(timer);
-      timer = undefined;
-      activeContext = undefined;
-      sources = new Map();
-      trackedFiles = new Set();
-      syncInFlight = false;
-      syncAgain = false;
+      state.generation += 1;
+      if (state.timer) scheduler.clearInterval(state.timer);
+      state.timer = undefined;
+      state.activeContext = undefined;
+      state.sources = new Map();
+      state.trackedFiles = new Set();
+      state.syncInFlight = false;
+      state.syncAgain = false;
       if (ctx?.mode === "tui") ctx.ui.setWidget(WIDGET_KEY, undefined);
     };
 
     const syncOnce = async (ctx: ExtensionContext, expectedGeneration: number) => {
-      let editorText: string;
-      try {
-        editorText = ctx.ui.getEditorText();
-      } catch {
-        return;
-      }
+      const editorText = readEditorText(ctx);
+      if (editorText === undefined) return;
 
       const paths = clipboardImagePaths(editorText);
       const pathSet = new Set(paths);
-      let changed = false;
+      const changes = { changed: false };
 
-      for (const path of sources.keys()) {
+      for (const path of state.sources.keys()) {
         if (!pathSet.has(path)) {
-          sources.delete(path);
-          changed = true;
+          state.sources.delete(path);
+          changes.changed = true;
         }
       }
 
       const additions = await Promise.all(paths
-        .filter((path) => !sources.has(path))
+        .filter((path) => !state.sources.has(path))
         .map(async (path) => {
           const source = await readPreviewSource(path);
           if (source) await prepareKittyVariant(source);
           return [path, source] as const;
         }));
-      if (expectedGeneration !== generation || ctx !== activeContext) return;
+      if (expectedGeneration !== state.generation || ctx !== state.activeContext) return;
 
       for (const [path, source] of additions) {
-        if (source && !sources.has(path)) {
-          sources.set(path, source);
-          trackedFiles.add(path);
-          changed = true;
+        if (source && !state.sources.has(path)) {
+          state.sources.set(path, source);
+          state.trackedFiles.add(path);
+          changes.changed = true;
         }
       }
 
-      if (changed) renderPreviewWidget(ctx, [...sources.values()]);
+      if (changes.changed) renderPreviewWidget(ctx, [...state.sources.values()]);
     };
 
     const sync = async (ctx: ExtensionContext, expectedGeneration: number) => {
-      if (syncInFlight) {
-        syncAgain = true;
+      if (state.syncInFlight) {
+        state.syncAgain = true;
         return;
       }
-      syncInFlight = true;
+      state.syncInFlight = true;
       try {
         do {
-          syncAgain = false;
+          state.syncAgain = false;
           await syncOnce(ctx, expectedGeneration);
-        } while (syncAgain && expectedGeneration === generation && ctx === activeContext);
+        } while (state.syncAgain && expectedGeneration === state.generation && ctx === state.activeContext);
       } finally {
-        syncInFlight = false;
+        state.syncInFlight = false;
       }
     };
 
@@ -303,19 +310,19 @@ export function createImagePreviewExtension(options: ImagePreviewOptions = {}) {
       stop();
       if (ctx.mode !== "tui") return;
 
-      activeContext = ctx;
-      const expectedGeneration = generation;
+      state.activeContext = ctx;
+      const expectedGeneration = state.generation;
       await sync(ctx, expectedGeneration);
-      if (expectedGeneration !== generation || ctx !== activeContext) return;
+      if (expectedGeneration !== state.generation || ctx !== state.activeContext) return;
 
-      timer = scheduler.setInterval(() => {
+      state.timer = scheduler.setInterval(() => {
         void sync(ctx, expectedGeneration);
       }, pollIntervalMs);
-      timer.unref?.();
+      state.timer.unref?.();
     });
 
     pi.on("session_shutdown", async (event, ctx) => {
-      const tracked = [...trackedFiles];
+      const tracked = [...state.trackedFiles];
       stop(ctx);
       if (event.reason !== "reload") await Promise.all(tracked.map(deleteClipboardImage));
     });

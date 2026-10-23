@@ -1,3 +1,9 @@
+## [0.1.13](https://github.com/prjct-app/pi-clipboard/compare/v0.1.12...v0.1.13) (2026-10-23)
+
+### Bug Fixes
+
+* require Node.js 22.23.4 ([#18](https://github.com/prjct-app/pi-clipboard/issues/18)) ([27cb83b](https://github.com/prjct-app/pi-clipboard/commit/27cb83be9c41e7fc6c005dc5dcacc5bf17334108))
+
 ## [0.1.12](https://github.com/prjct-app/pi-clipboard/compare/v0.1.11...v0.1.12) (2026-10-13)
 
 ## 0.1.11 (2026-10-12)
